@@ -1,0 +1,9 @@
+CREATE TABLE users.tokens (
+    id BIGSERIAL PRIMARY KEY,
+    token TEXT NOT NULL,
+    token_type VARCHAR(20) NOT NULL DEFAULT 'BEARER',
+    expired BOOLEAN NOT NULL DEFAULT FALSE,
+    revoked BOOLEAN NOT NULL DEFAULT FALSE,
+    user_id BIGINT NOT NULL,
+    CONSTRAINT fk_tokens_user_id FOREIGN KEY (user_id) REFERENCES users.users(id) ON DELETE CASCADE
+);
