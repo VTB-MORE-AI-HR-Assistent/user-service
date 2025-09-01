@@ -99,34 +99,56 @@ jobs:
             docker load < user-service.tar.gz
             
             # Debug: Show environment setup
+            echo "=== Deployment Debug Info ==="
             echo "Setting up environment variables..."
-            echo "Attempting to connect to database..."
-            echo "PG_URL format should be: jdbc:postgresql://HOST:PORT/DATABASE"
-            echo "Current PG_URL points to: $(echo '${{ secrets.PG_URL }}' | sed 's/jdbc:postgresql:\/\///' | cut -d'/' -f1)"
+            
+            # Check PostgreSQL container
+            echo "Checking for PostgreSQL container..."
+            POSTGRES_CONTAINER=$(docker ps --format "table {{.Names}}" | grep -E "postgres|user-db" | head -1)
+            if [ -n "$POSTGRES_CONTAINER" ]; then
+              echo "Found PostgreSQL container: $POSTGRES_CONTAINER"
+              # Get the network of postgres container
+              POSTGRES_NETWORK=$(docker inspect $POSTGRES_CONTAINER --format='{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' | cut -c1-12)
+              echo "PostgreSQL is on network: $POSTGRES_NETWORK"
+            else
+              echo "WARNING: No PostgreSQL container found!"
+            fi
             
             # Force remove old container if exists
             docker stop user-service 2>/dev/null || true
             docker rm user-service 2>/dev/null || true
             
-            # Check PostgreSQL container
-            echo "Checking for PostgreSQL container..."
-            docker ps -a | grep postgres || echo "No postgres container found"
+            # Create network if it doesn't exist
+            docker network create user-service-network 2>/dev/null || true
             
-            # Use the PG_URL from secrets directly
-            echo "Using PG_URL from secrets..."
+            # Ensure PostgreSQL is on the same network
+            if [ -n "$POSTGRES_CONTAINER" ]; then
+              docker network connect user-service-network $POSTGRES_CONTAINER 2>/dev/null || true
+              echo "Connected $POSTGRES_CONTAINER to user-service-network"
+            fi
             
-            # Run container with explicit environment variables
+            # HARDCODED VALUES FOR DEBUGGING
+            # Using container name 'user-db' which should be accessible within the same network
+            echo "Using HARDCODED database connection values for debugging..."
+            
+            # Run container with HARDCODED environment variables
             docker run -d \
               --name user-service \
               --restart unless-stopped \
-              --add-host=host.docker.internal:host-gateway \
+              --network user-service-network \
               -p 8081:8081 \
               -e SPRING_PROFILES_ACTIVE=production \
-              -e PG_URL="${{ secrets.PG_URL }}" \
-              -e PG_USERNAME="${{ secrets.PG_USERNAME }}" \
-              -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
-              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              -e PG_URL="jdbc:postgresql://user-db:5432/aihr" \
+              -e PG_USERNAME="postgres" \
+              -e PG_PASSWORD="postgres" \
+              -e JWT_SECRET="404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" \
               user-service:latest
+            
+            echo "Container started with hardcoded values:"
+            echo "  PG_URL: jdbc:postgresql://user-db:5432/aihr"
+            echo "  PG_USERNAME: postgres"
+            echo "  PG_PASSWORD: postgres"
+            echo "  Network: user-service-network"
             
             # Debug: Show what environment variables were set
             echo "Container environment variables:"
