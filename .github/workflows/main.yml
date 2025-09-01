@@ -100,19 +100,37 @@ jobs:
             
             # Debug: Show environment setup
             echo "Setting up environment variables..."
-            echo "PG_URL is: ${{ secrets.PG_URL }}"
+            echo "Attempting to connect to database..."
+            echo "PG_URL format should be: jdbc:postgresql://HOST:PORT/DATABASE"
+            echo "Current PG_URL points to: $(echo '${{ secrets.PG_URL }}' | sed 's/jdbc:postgresql:\/\///' | cut -d'/' -f1)"
             
-            # Run container with proper environment variables
+            # Force remove old container if exists
+            docker stop user-service 2>/dev/null || true
+            docker rm user-service 2>/dev/null || true
+            
+            # Check PostgreSQL container
+            echo "Checking for PostgreSQL container..."
+            docker ps -a | grep postgres || echo "No postgres container found"
+            
+            # Use the PG_URL from secrets directly
+            echo "Using PG_URL from secrets..."
+            
+            # Run container with explicit environment variables
             docker run -d \
               --name user-service \
               --restart unless-stopped \
-              --network host \
+              --add-host=host.docker.internal:host-gateway \
+              -p 8081:8081 \
               -e SPRING_PROFILES_ACTIVE=production \
+              -e PG_URL="${{ secrets.PG_URL }}" \
               -e PG_USERNAME="${{ secrets.PG_USERNAME }}" \
               -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
-              -e PG_URL="${{ secrets.PG_URL }}" \
               -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
               user-service:latest
+            
+            # Debug: Show what environment variables were set
+            echo "Container environment variables:"
+            docker exec user-service env | grep -E "PG_|SPRING_" || true
             
             # Wait for container to start
             sleep 15
