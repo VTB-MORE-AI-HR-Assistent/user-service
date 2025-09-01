@@ -127,27 +127,26 @@ jobs:
               echo "Connected $POSTGRES_CONTAINER to user-service-network"
             fi
             
-            # HARDCODED VALUES FOR DEBUGGING
-            # Using container name 'user-db' which should be accessible within the same network
-            echo "Using HARDCODED database connection values for debugging..."
+            # Using GitHub Secrets for configuration
+            echo "Using database connection values from GitHub Secrets..."
             
-            # Run container with HARDCODED environment variables
+            # Run container with environment variables from secrets
             docker run -d \
               --name user-service \
               --restart unless-stopped \
               --network user-service-network \
               -p 8081:8081 \
               -e SPRING_PROFILES_ACTIVE=production \
-              -e PG_URL="jdbc:postgresql://user-db:5432/aihr" \
-              -e PG_USERNAME="postgres" \
-              -e PG_PASSWORD="postgres" \
-              -e JWT_SECRET="404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" \
+              -e PG_URL="${{ secrets.PG_URL }}" \
+              -e PG_USERNAME="${{ secrets.PG_USERNAME }}" \
+              -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
+              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
               user-service:latest
             
-            echo "Container started with hardcoded values:"
-            echo "  PG_URL: jdbc:postgresql://user-db:5432/aihr"
-            echo "  PG_USERNAME: postgres"
-            echo "  PG_PASSWORD: postgres"
+            echo "Container started with configuration from GitHub Secrets:"
+            echo "  PG_URL: [HIDDEN]"
+            echo "  PG_USERNAME: [HIDDEN]"
+            echo "  PG_PASSWORD: [HIDDEN]"
             echo "  Network: user-service-network"
             
             # Debug: Show what environment variables were set
