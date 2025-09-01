@@ -2,9 +2,9 @@ spring:
   application:
     name: user-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/hr_system}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    url: ${PG_URL:jdbc:postgresql://postgres:5432/aihr}
+    username: ${PG_USERNAME:postgres}
+    password: ${PG_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -16,7 +16,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         jdbc:
-          url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/hr_system}
+          url: ${PG_URL:jdbc:postgresql://postgres:5432/aihr}
   flyway:
     enabled: true
     locations: classpath:db/migration
