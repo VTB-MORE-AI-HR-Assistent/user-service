@@ -1,0 +1,41 @@
+# Gradle build artifacts
+.gradle/
+build/
+out/
+bin/
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+README*
+LICENSE
+
+# Test reports
+test-results/
+reports/
+
+# Logs
+*.log
+logs/
+
+# Local config
+application-local.yml
+application-local.properties
+.env

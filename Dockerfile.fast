@@ -1,0 +1,22 @@
+# Fast Dockerfile - requires local build first
+# Run: ./gradlew bootJar
+# Then: docker build -f Dockerfile.fast -t user-service:latest .
+
+FROM eclipse-temurin:21-jre-alpine
+
+RUN apk add --no-cache dumb-init
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -S spring && adduser -S spring -G spring
+
+# Copy pre-built JAR
+COPY build/libs/*.jar app.jar
+RUN chown spring:spring app.jar
+
+USER spring:spring
+
+EXPOSE 8081
+
+ENTRYPOINT ["dumb-init", "--", "java", "-jar", "app.jar"]

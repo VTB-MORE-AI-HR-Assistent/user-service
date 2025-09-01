@@ -1,0 +1,303 @@
+name: Deploy to Server
+
+on:
+  workflow_dispatch: # Manual trigger
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]  # Run after CI/CD Pipeline completes
+    types:
+      - completed
+    branches: [zhura, main]
+
+env:
+  JAVA_VERSION: "21"
+
+jobs:
+  # Build and prepare for deployment
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Spring Boot JAR
+        run: ./gradlew bootJar
+
+      - name: Build Docker image
+        run: |
+          docker build -t user-service:latest .
+          docker save user-service:latest | gzip > user-service.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: user-service.tar.gz
+          retention-days: 1
+
+  # Deploy to server using SSH
+  deploy-ssh:
+    name: Deploy via SSH
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/zhura' || github.ref == 'refs/heads/main' # Deploy from zhura or main branch
+
+    steps:
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            # Create deployment directory if it doesn't exist
+            mkdir -p ${{ secrets.SERVER_PATH }}
+            cd ${{ secrets.SERVER_PATH }}
+
+            # Stop existing container if running
+            docker stop user-service || true
+            docker rm user-service || true
+
+      - name: Copy Docker image to server
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          source: "user-service.tar.gz"
+          target: "${{ secrets.SERVER_PATH }}"
+
+      - name: Load and run Docker container
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            cd ${{ secrets.SERVER_PATH }}
+
+            # Load Docker image
+            docker load < user-service.tar.gz
+
+            # Run new container with environment variables
+            docker run -d \
+              --name user-service \
+              --restart unless-stopped \
+              -p 8081:8081 \
+              -e SPRING_PROFILES_ACTIVE=production \
+              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e SPRING_DATASOURCE_URL=${{ secrets.DB_URL }} \
+              -e JWT_SECRET=${{ secrets.JWT_SECRET }} \
+              user-service:latest
+
+            # Health check
+            sleep 15
+            if docker ps | grep -q user-service; then
+              echo "✅ Deployment successful!"
+              docker logs user-service --tail 50
+            else
+              echo "❌ Deployment failed!"
+              docker logs user-service
+              exit 1
+            fi
+
+            # Cleanup
+            rm user-service.tar.gz
+
+  # Alternative: Deploy using Docker Compose
+  deploy-compose:
+    name: Deploy with Docker Compose
+    runs-on: ubuntu-latest
+    needs: build
+    if: false # Enable by changing to true and disable deploy-ssh
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create docker-compose.yml
+        run: |
+          cat > docker-compose.prod.yml << EOF
+          version: '3.8'
+          services:
+            user-service:
+              image: user-service:latest
+              container_name: user-service
+              ports:
+                - "8081:8081"
+              environment:
+                - SPRING_PROFILES_ACTIVE=production
+                - DB_USERNAME=\${DB_USERNAME}
+                - DB_PASSWORD=\${DB_PASSWORD}
+                - SPRING_DATASOURCE_URL=\${DB_URL}
+                - JWT_SECRET=\${JWT_SECRET}
+              restart: unless-stopped
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+            
+            postgres:
+              image: postgres:15-alpine
+              container_name: user-db
+              environment:
+                - POSTGRES_DB=hr_system
+                - POSTGRES_USER=\${DB_USERNAME}
+                - POSTGRES_PASSWORD=\${DB_PASSWORD}
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+              restart: unless-stopped
+
+          volumes:
+            postgres_data:
+          EOF
+
+      - name: Deploy via SSH with Docker Compose
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            cd ${{ secrets.SERVER_PATH }}
+
+            # Copy docker-compose file
+            cat > docker-compose.yml << 'EOF'
+            ${{ steps.create-compose.outputs.compose_content }}
+            EOF
+
+            # Set environment variables
+            export DB_USERNAME=${{ secrets.DB_USERNAME }}
+            export DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            export DB_URL=${{ secrets.DB_URL }}
+            export JWT_SECRET=${{ secrets.JWT_SECRET }}
+
+            # Pull and run
+            docker-compose down || true
+            docker-compose up -d
+
+            # Check status
+            docker-compose ps
+
+  # Alternative: Deploy JAR directly (without Docker)
+  deploy-jar:
+    name: Deploy JAR (No Docker)
+    runs-on: ubuntu-latest
+    needs: build
+    if: false # Enable if you prefer JAR deployment without Docker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      - name: Build JAR
+        run: |
+          chmod +x gradlew
+          ./gradlew bootJar
+
+      - name: Copy JAR to Server
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          source: "build/libs/user-service-*.jar"
+          target: "${{ secrets.SERVER_PATH }}"
+
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            # Navigate to app directory
+            cd ${{ secrets.SERVER_PATH }}
+
+            # Stop existing service
+            sudo systemctl stop user-service || true
+
+            # Move new JAR
+            mv build/libs/user-service-*.jar user-service.jar
+
+            # Create systemd service if not exists
+            if [ ! -f /etc/systemd/system/user-service.service ]; then
+              sudo tee /etc/systemd/system/user-service.service > /dev/null <<EOF
+            [Unit]
+            Description=User Service Spring Boot Application
+            After=network.target
+
+            [Service]
+            Type=simple
+            User=${{ secrets.SERVER_USER }}
+            WorkingDirectory=${{ secrets.SERVER_PATH }}
+            ExecStart=/usr/bin/java -jar user-service.jar
+            Environment="SPRING_PROFILES_ACTIVE=production"
+            Environment="DB_USERNAME=${{ secrets.DB_USERNAME }}"
+            Environment="DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
+            Environment="SPRING_DATASOURCE_URL=${{ secrets.DB_URL }}"
+            Environment="JWT_SECRET=${{ secrets.JWT_SECRET }}"
+            Restart=on-failure
+            RestartSec=10
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+              sudo systemctl daemon-reload
+              sudo systemctl enable user-service
+            fi
+
+            # Start service
+            sudo systemctl start user-service
+            sudo systemctl status user-service
+
+  # Notification job
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [deploy-ssh]
+    if: always()
+
+    steps:
+      - name: Deployment Status
+        run: |
+          if [ "${{ needs.deploy-ssh.result }}" == "success" ]; then
+            echo "## ✅ Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+            echo "Application deployed to: ${{ secrets.SERVER_HOST }}" >> $GITHUB_STEP_SUMMARY
+            echo "Access at: http://${{ secrets.SERVER_HOST }}:8081" >> $GITHUB_STEP_SUMMARY
+            echo "Swagger UI: http://${{ secrets.SERVER_HOST }}:8081/swagger-ui.html" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Deployment Failed!" >> $GITHUB_STEP_SUMMARY
+            echo "Check the logs for more details." >> $GITHUB_STEP_SUMMARY
+          fi
