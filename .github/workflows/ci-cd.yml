@@ -47,6 +47,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint # Run after lint job
 
+    # PostgreSQL service for tests
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hr_system
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -74,7 +90,14 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run tests
+        # Option 1: Run tests with PostgreSQL (current setup)
         run: ./gradlew test
+        env:
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/hr_system
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+        # Option 2: To skip tests temporarily, replace the run command above with:
+        # run: ./gradlew build -x test
 
       - name: Build application
         run: ./gradlew bootJar
