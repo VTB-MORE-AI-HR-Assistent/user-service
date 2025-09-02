@@ -28,13 +28,16 @@ jobs:
         distribution: 'temurin'
     
     - name: Build with Gradle
-      working-directory: ./user-service
       run: |
         chmod +x gradlew
         ./gradlew clean build -x test
+      env:
+        SERVICE_NAME: ${{ env.SERVICE_NAME }}
+        SERVICE_PORT: ${{ env.SERVICE_PORT }}
+        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+        JAVA_HOME: ${{ env.JAVA_HOME }}
     
     - name: Build Docker image
-      working-directory: ./user-service
       run: |
         docker build -t ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} .
         docker save ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} | gzip > ${{ env.SERVICE_NAME }}.tar.gz
@@ -48,7 +51,7 @@ jobs:
     
     - name: Copy Docker image to server
       run: |
-        scp ./user-service/${{ env.SERVICE_NAME }}.tar.gz \
+        scp ${{ env.SERVICE_NAME }}.tar.gz \
           ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_PATH }}/${{ env.SERVICE_NAME }}.tar.gz
     
     - name: Deploy to server
