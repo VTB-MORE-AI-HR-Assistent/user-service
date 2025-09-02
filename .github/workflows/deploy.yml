@@ -19,11 +19,9 @@ jobs:
         distribution: 'temurin'
     
     - name: Build with Gradle
-      working-directory: ./user-service
       run: ./gradlew build -x test
     
     - name: Build Docker image
-      working-directory: ./user-service
       run: docker build -t user-service:latest .
     
     - name: Save Docker image
