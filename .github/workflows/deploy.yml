@@ -77,7 +77,8 @@ jobs:
             --network app-network \
             -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} \
             -e USER_SERVICE_PORT=${{ env.SERVICE_PORT }} \
-            -e PG_URL=${{ secrets.PG_URL }} \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e PG_HOST=${{ secrets.PG_HOST }} \
             -e PG_PORT=${{ secrets.PG_PORT }} \
             -e PG_DATABASE=${{ secrets.PG_DATABASE }} \
             -e PG_USERNAME=${{ secrets.PG_USERNAME }} \
