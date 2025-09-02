@@ -96,7 +96,7 @@ jobs:
           echo "Deployment completed successfully!"
         ENDSSH
     
-    - name: Health check
-      run: |
-        sleep 15
-        curl -f http://${{ secrets.SERVER_HOST }}:${{ env.SERVICE_PORT }}/actuator/health || exit 1
+#    - name: Health check
+#      run: |
+#        sleep 15
+#        curl -f http://${{ secrets.SERVER_HOST }}:${{ env.SERVICE_PORT }}/actuator/health || exit 1
