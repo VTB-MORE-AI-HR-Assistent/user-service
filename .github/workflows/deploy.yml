@@ -130,13 +130,30 @@ jobs:
             # Using GitHub Secrets for configuration
             echo "Using database connection values from GitHub Secrets..."
 
+            # Determine application port (default to 8082 if not provided)
+            APP_PORT="${{ secrets.USER_SERVICE_PORT }}"
+            if [ -z "$APP_PORT" ]; then
+              APP_PORT=8082
+            fi
+            echo "Application port to use: $APP_PORT"
+
+            # Free the port if any other container is using it
+            echo "Checking for containers using port $APP_PORT..."
+            CONFLICTING_CONTAINER=$(docker ps --format '{{.ID}} {{.Ports}} {{.Names}}' | grep ":$APP_PORT->" | awk '{print $1}')
+            if [ -n "$CONFLICTING_CONTAINER" ]; then
+              echo "Stopping container $CONFLICTING_CONTAINER that is using port $APP_PORT"
+              docker stop $CONFLICTING_CONTAINER || true
+              docker rm $CONFLICTING_CONTAINER || true
+            fi
+
             # Run container with environment variables from secrets
             docker run -d \
               --name user-service \
               --restart unless-stopped \
               --network user-service-network \
-              -p 8081:8081 \
+              -p $APP_PORT:$APP_PORT \
               -e SPRING_PROFILES_ACTIVE=production \
+              -e USER_SERVICE_PORT=$APP_PORT \
               -e PG_URL="${{ secrets.PG_URL }}" \
               -e PG_USERNAME="${{ secrets.PG_USERNAME }}" \
               -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
@@ -148,6 +165,7 @@ jobs:
             echo "  PG_USERNAME: [HIDDEN]"
             echo "  PG_PASSWORD: [HIDDEN]"
             echo "  Network: user-service-network"
+            echo "  Port: $APP_PORT"
 
             # Debug: Show what environment variables were set
             echo "Container environment variables:"
@@ -163,7 +181,7 @@ jobs:
               
               # Try to access the application
               for i in {1..10}; do
-                if curl -f http://localhost:8081/actuator/health 2>/dev/null; then
+                if curl -f http://localhost:$APP_PORT/actuator/health 2>/dev/null; then
                   echo "✅ Application is healthy!"
                   break
                 fi
@@ -188,10 +206,10 @@ jobs:
         run: |
           echo "## 🚀 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
           echo "- **Server**: ${{ secrets.SERVER_HOST }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Port**: 8081" >> $GITHUB_STEP_SUMMARY
+          echo "- **Port**: ${USER_SERVICE_PORT:-8082}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Access URLs:" >> $GITHUB_STEP_SUMMARY
-          echo "- API: http://${{ secrets.SERVER_HOST }}:8081" >> $GITHUB_STEP_SUMMARY
-          echo "- Swagger: http://${{ secrets.SERVER_HOST }}:8081/swagger-ui.html" >> $GITHUB_STEP_SUMMARY
+          echo "- API: http://${{ secrets.SERVER_HOST }}:${USER_SERVICE_PORT:-8082}" >> $GITHUB_STEP_SUMMARY
+          echo "- Swagger: http://${{ secrets.SERVER_HOST }}:${USER_SERVICE_PORT:-8082}/swagger-ui.html" >> $GITHUB_STEP_SUMMARY
