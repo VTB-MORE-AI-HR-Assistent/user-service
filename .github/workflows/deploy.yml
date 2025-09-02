@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     # Only deploy on push to zhura or main branches (not on PRs)
-    if: success() && github.event_name == 'push' && (github.ref == 'refs/heads/zhura' || github.ref == 'refs/heads/main')
+    if: success() && github.event_name == 'push'
 
     steps:
       - name: Download Docker image
