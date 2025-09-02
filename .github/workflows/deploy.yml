@@ -1,100 +1,197 @@
-name: Deploy User Service
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master, deploy-test ]
-    paths:
-      - '**'
-      - '.github/workflows/deploy.yml'
-  workflow_dispatch:
+    branches: [deploy-test, zhura, main, dev]
+  pull_request:
+    branches: [deploy-test, zhura, main, dev]
+  workflow_dispatch: # Allow manual trigger
 
 env:
-  SERVICE_NAME: user-service
-  SERVICE_PORT: 8082
-  IMAGE_TAG: ${{ github.sha }}
+  JAVA_VERSION: "21"
 
 jobs:
-  build-and-deploy:
+  # Build
+  build:
+    name: Build Application
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Set up JDK 21
-      uses: actions/setup-java@v3
-      with:
-        java-version: '21'
-        distribution: 'temurin'
-    
-    - name: Build with Gradle
-      run: |
-        chmod +x gradlew
-        ./gradlew clean build -x test
-      env:
-        SERVICE_NAME: ${{ env.SERVICE_NAME }}
-        SERVICE_PORT: ${{ env.SERVICE_PORT }}
-        IMAGE_TAG: ${{ env.IMAGE_TAG }}
-        JAVA_HOME: ${{ env.JAVA_HOME }}
-    
-    - name: Build Docker image
-      run: |
-        docker build -t ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} .
-        docker save ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} | gzip > ${{ env.SERVICE_NAME }}.tar.gz
-    
-    - name: Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-    
-    - name: Copy Docker image to server
-      run: |
-        scp ${{ env.SERVICE_NAME }}.tar.gz \
-          ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_PATH }}/${{ env.SERVICE_NAME }}.tar.gz
-    
-    - name: Deploy to server
-      run: |
-        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
-          cd ${{ secrets.SERVER_PATH }}
-          
-          # Load Docker image
-          docker load < ${{ env.SERVICE_NAME }}.tar.gz
-          rm ${{ env.SERVICE_NAME }}.tar.gz
-          
-          # Stop and remove old container if exists
-          docker stop ${{ env.SERVICE_NAME }} 2>/dev/null || true
-          docker rm ${{ env.SERVICE_NAME }} 2>/dev/null || true
-          
-          # Create Docker network if not exists
-          docker network create app-network 2>/dev/null || true
-          
-          # Run new container
-          docker run -d \
-            --name ${{ env.SERVICE_NAME }} \
-            --restart unless-stopped \
-            --network app-network \
-            -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} \
-            -e SPRING_PROFILES_ACTIVE=production \
-            -e USER_SERVICE_PORT=${{ env.SERVICE_PORT }} \
-            -e PG_URL="${{ secrets.PG_URL }}" \
-            -e PG_USERNAME=${{ secrets.PG_USERNAME }} \
-            -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
-            -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
-            ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }}
-          
-          # Clean up old images
-          docker image prune -f
-          
-          # Check if container is running
-          sleep 5
-          docker ps | grep ${{ env.SERVICE_NAME }}
-          
-          echo "Deployment completed successfully!"
-        ENDSSH
-    
-#    - name: Health check
-#      run: |
-#        sleep 15
-#        curl -f http://${{ secrets.SERVER_HOST }}:${{ env.SERVICE_PORT }}/actuator/health || exit 1
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: "temurin"
+          cache: "gradle"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build JAR (skip tests)
+        run: ./gradlew bootJar -x test
+
+      - name: Build Docker image
+        run: |
+          docker build -t user-service:latest .
+          docker save user-service:latest | gzip > user-service.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: user-service.tar.gz
+          retention-days: 1
+
+  # Deploy to server
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build
+    # Only deploy on push to zhura or main branches (not on PRs)
+    if: success() && github.event_name == 'push' && (github.ref == 'refs/heads/zhura' || github.ref == 'refs/heads/main')
+
+    steps:
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Setup SSH and deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            # Create deployment directory
+            mkdir -p ${{ secrets.SERVER_PATH }}
+            cd ${{ secrets.SERVER_PATH }}
+
+            # Stop existing container
+            docker stop user-service 2>/dev/null || true
+            docker rm user-service 2>/dev/null || true
+
+      - name: Copy Docker image to server
+        uses: appleboy/scp-action@v0.1.5
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          source: "user-service.tar.gz"
+          target: "${{ secrets.SERVER_PATH }}"
+
+      - name: Deploy container
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            cd ${{ secrets.SERVER_PATH }}
+
+            # Load and run Docker image
+            docker load < user-service.tar.gz
+
+            # Debug: Show environment setup
+            echo "=== Deployment Debug Info ==="
+            echo "Setting up environment variables..."
+
+            # Check PostgreSQL container
+            echo "Checking for PostgreSQL container..."
+            POSTGRES_CONTAINER=$(docker ps --format "table {{.Names}}" | grep -E "postgres|user-db" | head -1)
+            if [ -n "$POSTGRES_CONTAINER" ]; then
+              echo "Found PostgreSQL container: $POSTGRES_CONTAINER"
+              # Get the network of postgres container
+              POSTGRES_NETWORK=$(docker inspect $POSTGRES_CONTAINER --format='{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' | cut -c1-12)
+              echo "PostgreSQL is on network: $POSTGRES_NETWORK"
+            else
+              echo "WARNING: No PostgreSQL container found!"
+            fi
+
+            # Force remove old container if exists
+            docker stop user-service 2>/dev/null || true
+            docker rm user-service 2>/dev/null || true
+
+            # Create network if it doesn't exist
+            docker network create user-service-network 2>/dev/null || true
+
+            # Ensure PostgreSQL is on the same network
+            if [ -n "$POSTGRES_CONTAINER" ]; then
+              docker network connect user-service-network $POSTGRES_CONTAINER 2>/dev/null || true
+              echo "Connected $POSTGRES_CONTAINER to user-service-network"
+            fi
+
+            # Using GitHub Secrets for configuration
+            echo "Using database connection values from GitHub Secrets..."
+
+            # Run container with environment variables from secrets
+            docker run -d \
+              --name user-service \
+              --restart unless-stopped \
+              --network user-service-network \
+              -p 8081:8081 \
+              -e SPRING_PROFILES_ACTIVE=production \
+              -e PG_URL="${{ secrets.PG_URL }}" \
+              -e PG_USERNAME="${{ secrets.PG_USERNAME }}" \
+              -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
+              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              user-service:latest
+
+            echo "Container started with configuration from GitHub Secrets:"
+            echo "  PG_URL: [HIDDEN]"
+            echo "  PG_USERNAME: [HIDDEN]"
+            echo "  PG_PASSWORD: [HIDDEN]"
+            echo "  Network: user-service-network"
+
+            # Debug: Show what environment variables were set
+            echo "Container environment variables:"
+            docker exec user-service env | grep -E "PG_|SPRING_" || true
+
+            # Wait for container to start
+            sleep 15
+
+            # Check if running
+            if docker ps | grep -q user-service; then
+              echo "✅ Container is running!"
+              echo "Checking application health..."
+              
+              # Try to access the application
+              for i in {1..10}; do
+                if curl -f http://localhost:8081/actuator/health 2>/dev/null; then
+                  echo "✅ Application is healthy!"
+                  break
+                fi
+                echo "Waiting for application to be ready... ($i/10)"
+                sleep 3
+              done
+              
+              # Show last logs
+              echo "Application logs:"
+              docker logs user-service --tail 30
+            else
+              echo "❌ Container failed to start!"
+              echo "Container logs:"
+              docker logs user-service
+              exit 1
+            fi
+
+            # Cleanup
+            rm -f user-service.tar.gz
+
+      - name: Deployment summary
+        run: |
+          echo "## 🚀 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "- **Server**: ${{ secrets.SERVER_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Port**: 8081" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Access URLs:" >> $GITHUB_STEP_SUMMARY
+          echo "- API: http://${{ secrets.SERVER_HOST }}:8081" >> $GITHUB_STEP_SUMMARY
+          echo "- Swagger: http://${{ secrets.SERVER_HOST }}:8081/swagger-ui.html" >> $GITHUB_STEP_SUMMARY
