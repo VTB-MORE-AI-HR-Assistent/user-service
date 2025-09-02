@@ -1,4 +1,4 @@
-package com.vladnekrasov.user_service
+package com.vladnekrasov.userservice
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication

@@ -1,0 +1,98 @@
+name: Deploy User Service
+
+on:
+  push:
+    branches: [ main, master, deploy-test ]
+    paths:
+      - 'user-service/**'
+      - '.github/workflows/user-service-deploy.yml'
+  workflow_dispatch:
+
+env:
+  SERVICE_NAME: user-service
+  SERVICE_PORT: 8082
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up JDK 21
+      uses: actions/setup-java@v3
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+    
+    - name: Build with Gradle
+      working-directory: ./user-service
+      run: |
+        chmod +x gradlew
+        ./gradlew clean build -x test
+    
+    - name: Build Docker image
+      working-directory: ./user-service
+      run: |
+        docker build -t ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} .
+        docker save ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} | gzip > ${{ env.SERVICE_NAME }}.tar.gz
+    
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+    
+    - name: Copy Docker image to server
+      run: |
+        scp ./user-service/${{ env.SERVICE_NAME }}.tar.gz \
+          ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.SERVER_PATH }}/${{ env.SERVICE_NAME }}.tar.gz
+    
+    - name: Deploy to server
+      run: |
+        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
+          cd ${{ secrets.SERVER_PATH }}
+          
+          # Load Docker image
+          docker load < ${{ env.SERVICE_NAME }}.tar.gz
+          rm ${{ env.SERVICE_NAME }}.tar.gz
+          
+          # Stop and remove old container if exists
+          docker stop ${{ env.SERVICE_NAME }} 2>/dev/null || true
+          docker rm ${{ env.SERVICE_NAME }} 2>/dev/null || true
+          
+          # Create Docker network if not exists
+          docker network create app-network 2>/dev/null || true
+          
+          # Run new container
+          docker run -d \
+            --name ${{ env.SERVICE_NAME }} \
+            --restart unless-stopped \
+            --network app-network \
+            -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} \
+            -e USER_SERVICE_PORT=${{ env.SERVICE_PORT }} \
+            -e PG_URL=${{ secrets.PG_URL }} \
+            -e PG_PORT=${{ secrets.PG_PORT }} \
+            -e PG_DATABASE=${{ secrets.PG_DATABASE }} \
+            -e PG_USERNAME=${{ secrets.PG_USERNAME }} \
+            -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
+            -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            ${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }}
+          
+          # Clean up old images
+          docker image prune -f
+          
+          # Check if container is running
+          sleep 5
+          docker ps | grep ${{ env.SERVICE_NAME }}
+          
+          echo "Deployment completed successfully!"
+        ENDSSH
+    
+    - name: Health check
+      run: |
+        sleep 15
+        curl -f http://${{ secrets.SERVER_HOST }}:${{ env.SERVICE_PORT }}/actuator/health || exit 1
