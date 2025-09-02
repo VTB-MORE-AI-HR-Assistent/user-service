@@ -2,7 +2,7 @@ name: Deploy User Service
 
 on:
   push:
-    branches: [ main, master, deploy-test ]
+    branches: [ main, master, deploy-test, dev-last ]
     paths:
       - '**'
       - '.github/workflows/deploy.yml'
@@ -93,8 +93,3 @@ jobs:
           
           echo "Deployment completed successfully!"
         ENDSSH
-    
-#    - name: Health check
-#      run: |
-#        sleep 15
-#        curl -f http://${{ secrets.SERVER_HOST }}:${{ env.SERVICE_PORT }}/actuator/health || exit 1

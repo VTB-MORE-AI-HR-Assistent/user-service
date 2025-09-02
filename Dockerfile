@@ -31,6 +31,6 @@ RUN chown spring:spring app.jar
 
 USER spring:spring
 
-EXPOSE 8081
+EXPOSE 8082
 
 ENTRYPOINT ["dumb-init", "--", "java", "-jar", "app.jar"]
