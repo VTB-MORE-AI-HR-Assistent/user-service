@@ -37,6 +37,7 @@ logging:
   level:
     root: INFO
     com.vladnekrasov: DEBUG
-    org.springframework.boot.autoconfigure: DEBUG
-    org.springframework.jdbc.datasource: DEBUG
-    com.zaxxer.hikari: DEBUG
+    # Remove these debug logs for cleaner output
+    # org.springframework.boot.autoconfigure: DEBUG
+    # org.springframework.jdbc.datasource: DEBUG
+    # com.zaxxer.hikari: DEBUG
