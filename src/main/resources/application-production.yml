@@ -1,21 +1,45 @@
 spring:
+  application:
+    name: user-service
   datasource:
     url: ${PG_URL:jdbc:postgresql://localhost:5432/aihr}
     username: ${PG_USERNAME:postgres}
-    password: ${PG_PASSWORD:password}
+    password: ${PG_PASSWORD:lBfTfVC8zzwmUV5XLIJzuJj0VOZhTVTj6F5kx3QnzGmvz1hpkBHj7ptj6FBwGNH6}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: false
+        format_sql: true
     show-sql: false
   flyway:
-    enabled: false
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    validate-on-migrate: false
+    out-of-order: true
+
+server:
+  port: ${USER_SERVICE_PORT:8082}
+
+jwt:
+  secret: ${JWT_SECRET:mySecretKeyForJWTTokenGenerationThisShouldBeVeryLongAndSecure123456789}
+  expiration: 86400000 # 24 hours in milliseconds
+  refresh-expiration: 604800000 # 7 days in milliseconds
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
 
 logging:
   level:
     root: INFO
-    com.vladnekrasov: INFO
+    com.vladnekrasov: DEBUG
+    # Remove these debug logs for cleaner output
+    # org.springframework.boot.autoconfigure: DEBUG
+    # org.springframework.jdbc.datasource: DEBUG
+    # com.zaxxer.hikari: DEBUG
