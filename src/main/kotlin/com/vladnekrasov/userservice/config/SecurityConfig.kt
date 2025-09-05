@@ -94,6 +94,17 @@ class SecurityConfig(
                     .requestMatchers("/v1/users/**", "/api/v1/users/**").authenticated()
                     .anyRequest().authenticated()
             }
+            .authorizeHttpRequests { auth ->
+                logger.info("Security: Configuring authorization rules")
+                auth
+                    .requestMatchers("/v1/auth/**").permitAll()
+                    .requestMatchers("/api/v1/auth/**").permitAll()
+                    .requestMatchers("/actuator/**").permitAll()
+                    .requestMatchers("/swagger-ui/**").permitAll()
+                    .requestMatchers("/api-docs/**").permitAll()
+                    .requestMatchers("/v3/api-docs/**").permitAll()
+                    .anyRequest().authenticated()
+            }
             .exceptionHandling { exceptions ->
                 exceptions.accessDeniedHandler { request, response, accessDeniedException ->
                     logger.error("Access denied for request ${request.method} ${request.requestURI}: ${accessDeniedException.message}")
