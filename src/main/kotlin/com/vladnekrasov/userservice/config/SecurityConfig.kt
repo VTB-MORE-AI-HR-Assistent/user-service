@@ -74,6 +74,13 @@ class SecurityConfig(
                     .requestMatchers("/v1/users/**", "/api/v1/users/**").authenticated()
                     .anyRequest().authenticated()
             }
+            .exceptionHandling { exceptions ->
+                exceptions.accessDeniedHandler { request, response, accessDeniedException ->
+                    logger.error("Access denied for request ${request.method} ${request.requestURI}: ${accessDeniedException.message}")
+                    response.status = 403
+                    response.writer.write("Access denied: ${accessDeniedException.message}")
+                }
+            }
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
         
