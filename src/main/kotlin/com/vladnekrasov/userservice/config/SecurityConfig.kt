@@ -53,6 +53,9 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers(
+                        "/v1/auth/login",
+                        "/v1/auth/register",
+                        "/v1/auth/refresh",
                         "/api/v1/auth/login",
                         "/api/v1/auth/register",
                         "/api/v1/auth/refresh",
@@ -62,7 +65,7 @@ class SecurityConfig(
                         "/v3/api-docs/**",
                         "/actuator/health"
                     ).permitAll()
-                    .requestMatchers("/api/v1/users/**").authenticated()
+                    .requestMatchers("/v1/users/**", "/api/v1/users/**").authenticated()
                     .anyRequest().authenticated()
             }
             .authenticationProvider(authenticationProvider())
