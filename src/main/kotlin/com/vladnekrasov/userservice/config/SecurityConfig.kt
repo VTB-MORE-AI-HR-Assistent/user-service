@@ -19,6 +19,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
+import org.slf4j.LoggerFactory
 
 @Configuration
 @EnableWebSecurity
@@ -27,6 +28,8 @@ class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val userDetailsService: UserDetailsService
 ) {
+    
+    private val logger = LoggerFactory.getLogger(SecurityConfig::class.java)
     
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
@@ -46,6 +49,9 @@ class SecurityConfig(
     
     @Bean
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
+        logger.info("Configuring Security Filter Chain")
+        logger.info("Permitted paths: /v1/auth/**, /api/v1/auth/**, /swagger-ui/**, /api-docs/**, /actuator/health")
+        
         http
             .csrf { it.disable() }
             .cors { it.configurationSource(corsConfigurationSource()) }
@@ -71,6 +77,7 @@ class SecurityConfig(
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
         
+        logger.info("Security Filter Chain configured successfully")
         return http.build()
     }
     

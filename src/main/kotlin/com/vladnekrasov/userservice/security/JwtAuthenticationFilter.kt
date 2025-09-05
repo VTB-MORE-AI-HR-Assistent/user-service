@@ -9,6 +9,7 @@ import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
+import org.slf4j.LoggerFactory
 
 @Component
 class JwtAuthenticationFilter(
@@ -16,14 +17,20 @@ class JwtAuthenticationFilter(
     private val userDetailsService: UserDetailsService
 ) : OncePerRequestFilter() {
     
+    private val logger = LoggerFactory.getLogger(JwtAuthenticationFilter::class.java)
+    
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
         filterChain: FilterChain
     ) {
+        logger.info("JWT Filter: Processing request ${request.method} ${request.requestURI}")
+        logger.info("JWT Filter: Headers: ${request.headerNames.asSequence().map { "$it: ${request.getHeader(it)}" }.joinToString(", ")}")
+        
         val token = extractToken(request)
         
         if (token != null) {
+            logger.info("JWT Filter: Token found, validating...")
             try {
                 val username = jwtUtils.getUsernameFromToken(token)
                 
@@ -38,11 +45,14 @@ class JwtAuthenticationFilter(
                         )
                         authentication.details = WebAuthenticationDetailsSource().buildDetails(request)
                         SecurityContextHolder.getContext().authentication = authentication
+                        logger.info("JWT Filter: Authentication set for user: $username")
                     }
                 }
             } catch (e: Exception) {
-                logger.error("Cannot set user authentication: ${e.message}")
+                logger.error("JWT Filter: Cannot set user authentication: ${e.message}")
             }
+        } else {
+            logger.info("JWT Filter: No token found, proceeding without authentication")
         }
         
         filterChain.doFilter(request, response)
