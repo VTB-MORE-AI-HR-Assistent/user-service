@@ -90,6 +90,8 @@ class SecurityConfig(
     
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
+        logger.info("Configuring CORS with allowed origins: *, methods: GET,POST,PUT,DELETE,OPTIONS, headers: *")
+        
         val configuration = CorsConfiguration()
         configuration.allowedOrigins = listOf("*")
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
@@ -98,6 +100,8 @@ class SecurityConfig(
         
         val source = UrlBasedCorsConfigurationSource()
         source.registerCorsConfiguration("/**", configuration)
+        
+        logger.info("CORS configuration applied to all paths")
         return source
     }
 }

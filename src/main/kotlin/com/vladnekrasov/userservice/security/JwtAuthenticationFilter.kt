@@ -55,7 +55,9 @@ class JwtAuthenticationFilter(
             logger.info("JWT Filter: No token found, proceeding without authentication")
         }
         
+        logger.info("JWT Filter: Calling filterChain.doFilter()")
         filterChain.doFilter(request, response)
+        logger.info("JWT Filter: filterChain.doFilter() completed")
     }
     
     private fun extractToken(request: HttpServletRequest): String? {
