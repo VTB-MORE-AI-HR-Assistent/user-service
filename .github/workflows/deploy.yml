@@ -70,6 +70,9 @@ jobs:
           # Create Docker network if not exists
           docker network create app-network 2>/dev/null || true
           
+          # Connect user-db to app-network if not already connected
+          docker network connect app-network user-db 2>/dev/null || true
+          
           # Run new container
           docker run -d \
             --name ${{ env.SERVICE_NAME }} \
@@ -78,7 +81,7 @@ jobs:
             -p ${{ env.SERVICE_PORT }}:${{ env.SERVICE_PORT }} \
             -e SPRING_PROFILES_ACTIVE=production \
             -e USER_SERVICE_PORT=${{ env.SERVICE_PORT }} \
-            -e PG_URL="${{ secrets.PG_URL }}" \
+            -e PG_URL="jdbc:postgresql://user-db:5432/aihr" \
             -e PG_USERNAME=${{ secrets.PG_USERNAME }} \
             -e PG_PASSWORD="${{ secrets.PG_PASSWORD }}" \
             -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
@@ -92,4 +95,4 @@ jobs:
           docker ps | grep ${{ env.SERVICE_NAME }}
           
           echo "Deployment completed successfully!"
-        ENDSSH
+j
