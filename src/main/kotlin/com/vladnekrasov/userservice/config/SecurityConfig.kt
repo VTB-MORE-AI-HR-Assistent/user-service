@@ -20,6 +20,10 @@ import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import org.slf4j.LoggerFactory
+import org.springframework.web.filter.OncePerRequestFilter
+import jakarta.servlet.FilterChain
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
 
 @Configuration
 @EnableWebSecurity
@@ -30,6 +34,22 @@ class SecurityConfig(
 ) {
     
     private val logger = LoggerFactory.getLogger(SecurityConfig::class.java)
+    
+    @Bean
+    fun debugFilter(): OncePerRequestFilter {
+        return object : OncePerRequestFilter() {
+            override fun doFilterInternal(
+                request: HttpServletRequest,
+                response: HttpServletResponse,
+                filterChain: FilterChain
+            ) {
+                logger.info("DEBUG Filter: Processing request ${request.method} ${request.requestURI}")
+                logger.info("DEBUG Filter: Security context: ${org.springframework.security.core.context.SecurityContextHolder.getContext().authentication}")
+                filterChain.doFilter(request, response)
+                logger.info("DEBUG Filter: Request completed with status: ${response.status}")
+            }
+        }
+    }
     
     @Bean
     fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
@@ -82,6 +102,7 @@ class SecurityConfig(
                 }
             }
             .authenticationProvider(authenticationProvider())
+            .addFilterBefore(debugFilter(), UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
         
         logger.info("Security Filter Chain configured successfully")
