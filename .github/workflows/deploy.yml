@@ -95,4 +95,4 @@ jobs:
           docker ps | grep ${{ env.SERVICE_NAME }}
           
           echo "Deployment completed successfully!"
-j
+        ENDSSH
