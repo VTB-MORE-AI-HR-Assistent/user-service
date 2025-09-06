@@ -3,6 +3,7 @@ package com.vladnekrasov.userservice.controller
 import com.vladnekrasov.userservice.dto.*
 import com.vladnekrasov.userservice.service.AuthService
 import io.swagger.v3.oas.annotations.Operation
+import org.slf4j.LoggerFactory
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -21,6 +22,8 @@ import org.springframework.web.bind.annotation.*
 class AuthController(
     private val authService: AuthService
 ) {
+    
+    private val logger = LoggerFactory.getLogger(AuthController::class.java)
     
     @PostMapping("/login")
     @Operation(
