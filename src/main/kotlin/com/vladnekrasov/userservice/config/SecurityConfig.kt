@@ -77,24 +77,6 @@ class SecurityConfig(
             .cors { it.configurationSource(corsConfigurationSource()) }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
-                auth
-                    .requestMatchers(
-                        "/v1/auth/login",
-                        "/v1/auth/register",
-                        "/v1/auth/refresh",
-                        "/api/v1/auth/login",
-                        "/api/v1/auth/register",
-                        "/api/v1/auth/refresh",
-                        "/swagger-ui/**",
-                        "/swagger-ui.html",
-                        "/api-docs/**",
-                        "/v3/api-docs/**",
-                        "/actuator/health"
-                    ).permitAll()
-                    .requestMatchers("/v1/users/**", "/api/v1/users/**").authenticated()
-                    .anyRequest().authenticated()
-            }
-            .authorizeHttpRequests { auth ->
                 logger.info("Security: Configuring authorization rules")
                 auth
                     .requestMatchers("/v1/auth/**").permitAll()
@@ -103,6 +85,7 @@ class SecurityConfig(
                     .requestMatchers("/swagger-ui/**").permitAll()
                     .requestMatchers("/api-docs/**").permitAll()
                     .requestMatchers("/v3/api-docs/**").permitAll()
+                    .requestMatchers("/v1/users/**", "/api/v1/users/**").authenticated()
                     .anyRequest().authenticated()
             }
             .exceptionHandling { exceptions ->
