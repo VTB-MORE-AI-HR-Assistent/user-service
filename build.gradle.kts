@@ -37,10 +37,6 @@ dependencies {
     // Database
     runtimeOnly("org.postgresql:postgresql")
     
-    // Flyway для миграций
-    implementation("org.flywaydb:flyway-core")
-    implementation("org.flywaydb:flyway-database-postgresql")
-    
     // API Documentation
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.2.0")
     
